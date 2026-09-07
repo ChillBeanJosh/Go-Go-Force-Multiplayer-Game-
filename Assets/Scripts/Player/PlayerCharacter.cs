@@ -99,19 +99,6 @@ public class PlayerCharacter : NetworkBehaviour, ICharacterController
     private float _timeSinceJumpRequested;
     private bool _ungroundedDueToJump;
 
-    private PlayerInput _latestInput;
-
-    public void Start()
-    {
-        if (IsServer)
-        {
-            Motor.CharacterController = this;
-        }
-        else
-        {
-            Motor.enabled = false;
-        }
-    }
     public void Initialize()
     {
         _status.State = State.Stand;
@@ -264,10 +251,9 @@ public class PlayerCharacter : NetworkBehaviour, ICharacterController
                     var targetVelocity = groundedMovement * currentSpeed;
                     var steerVelocity = currentVelocity;
 
-                    var steerForce = (targetVelocity - targetVelocity) * slideSteerAcceleration * deltaTime;
-
-                    targetVelocity += steerForce;
-                    targetVelocity = Vector3.ClampMagnitude(currentVelocity, currentSpeed);
+                    var steerForce = (targetVelocity - steerVelocity) * slideSteerAcceleration * deltaTime;
+                    steerVelocity += steerForce;
+                    steerVelocity = Vector3.ClampMagnitude(steerVelocity, currentSpeed);
 
                     _status.Acceleration = (steerVelocity - currentVelocity) / deltaTime;
                     currentVelocity = steerVelocity;
