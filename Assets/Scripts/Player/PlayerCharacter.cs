@@ -1,5 +1,4 @@
 using KinematicCharacterController;
-using Unity.Netcode;
 using UnityEngine;
 
 public enum CrouchInput
@@ -33,7 +32,7 @@ public struct PlayerInput
     public CrouchInput Crouch;
 }
 
-public class PlayerCharacter : NetworkBehaviour, ICharacterController
+public class PlayerCharacter : MonoBehaviour, ICharacterController
 {
     [Header("Debug Tools: ")]
     [SerializeField] private int debugRayLength;

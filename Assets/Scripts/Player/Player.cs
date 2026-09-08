@@ -1,3 +1,4 @@
+using KinematicCharacterController;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Netcode;
@@ -16,16 +17,20 @@ public class Player : NetworkBehaviour
     //Network Version Of Start()
     public override void OnNetworkSpawn()
     {
-        if (!IsOwner) return;
+        playerCharacter.Initialize();
+
+        if (!IsOwner)
+        {
+            playerCamera.gameObject.SetActive(false);
+            return;
+        }
 
         Cursor.lockState = CursorLockMode.Locked;
 
         _inputActions = new PlayerInputActions();
         _inputActions.Enable();
 
-        playerCharacter.Initialize();
         playerCamera.Initialize(playerCharacter.GetCameraTarget());
-
         cameraSpring.Initialize();
         cameraLean.Initialize();
     }
