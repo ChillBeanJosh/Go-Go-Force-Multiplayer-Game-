@@ -3,6 +3,15 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Netcode;
 
+public struct PlayerInputState
+{
+    public Quaternion Rotation;
+    public Vector2 Move;
+    public bool Jump;
+    public bool JumpSustain;
+    public CrouchInput Crouch;
+}
+
 public class Player : NetworkBehaviour
 {
     [SerializeField] private PlayerCharacter playerCharacter;
@@ -13,11 +22,13 @@ public class Player : NetworkBehaviour
     [SerializeField] private CameraLean cameraLean;
 
     private PlayerInputActions _inputActions;
+    private PlayerInputState _pendingInput;
 
     //Network Version Of Start()
     public override void OnNetworkSpawn()
     {
         playerCharacter.Initialize();
+        KCCSimulationDriver.RegisterPlayer(this);
 
         if (!IsOwner)
         {
@@ -38,6 +49,8 @@ public class Player : NetworkBehaviour
     //Network Version of OnDestroy()
     public override void OnNetworkDespawn()
     {
+        KCCSimulationDriver.UnregisterPlayer(this);
+
         if (!IsOwner) return;
 
         _inputActions.Dispose();
@@ -49,7 +62,6 @@ public class Player : NetworkBehaviour
         if (!IsOwner) return;
 
         var deltaTime = Time.deltaTime;
-        //Stores The Gameplay Action Map From PlayerInputActions InputActions:
         var input = _inputActions.Gameplay;
 
         //Assign Action Values To Camera Input Struct Variables:
@@ -60,16 +72,13 @@ public class Player : NetworkBehaviour
         };
         playerCamera.UpdateRotation(cameraInput);
 
-        //Assign Action Values To Character Input Struct Variables:
-        var playerInput = new PlayerInput
-        {
-            Rotation = playerCamera.transform.rotation,
-            Move = input.Move.ReadValue<Vector2>(),
-            Jump = input.Jump.WasPressedThisFrame(),
-            JumpSustain = input.Jump.IsPressed(),
-            Crouch = input.Crouch.WasPressedThisFrame() ? CrouchInput.Toggle : CrouchInput.None
-        };
-        playerCharacter.UpdateInputs(playerInput);
+        //Store Input System Values In State Struct This Is Not Connected To The Character:
+        _pendingInput.Rotation = playerCamera.transform.rotation;
+        _pendingInput.Move = input.Move.ReadValue<Vector2>();
+        _pendingInput.JumpSustain = input.Jump.IsPressed();
+        _pendingInput.Jump = _pendingInput.Jump | input.Jump.WasPressedThisFrame();
+        if (input.Crouch.WasPressedThisFrame()) _pendingInput.Crouch = CrouchInput.Toggle;
+       
         playerCharacter.UpdateBody(deltaTime);
 
 #if UNITY_EDITOR
@@ -96,6 +105,26 @@ public class Player : NetworkBehaviour
         playerCamera.UpdatePosition(cameraTarget);
         cameraSpring.UpdateSpring(deltaTime, cameraTarget.up);
         cameraLean.UpdateLean(deltaTime, status.State is State.Slide ,status.Acceleration, cameraTarget.up);
+    }
+
+    public void ApplySimulationInput()
+    {
+        if (!IsOwner) return;
+
+        //Called Within SimulationDriver -> Apply Input To All Existing Characters Simultaneously:
+        var input = new PlayerInput
+        {
+            Rotation = _pendingInput.Rotation,
+            Move =  _pendingInput.Move,
+            Jump = _pendingInput.Jump,
+            JumpSustain = _pendingInput.JumpSustain,
+            Crouch = _pendingInput.Crouch
+        };
+        playerCharacter.UpdateInputs(input);
+
+        // One-shot inputs must be consumed after being applied.
+        _pendingInput.Jump = false;
+        _pendingInput.Crouch = CrouchInput.None;
     }
 
     public void Teleport(Vector3 position)
