@@ -1,4 +1,5 @@
 using KinematicCharacterController;
+using Unity.Netcode;
 using UnityEngine;
 
 public enum CrouchInput
@@ -15,12 +16,21 @@ public enum State
     Slide
 }
 
-public struct CharacterStatus
+public struct CharacterStatus : INetworkSerializable
 {
     public bool Grounded;
     public State State;
     public Vector3 Velocity;
     public Vector3 Acceleration;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer)
+        where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref Grounded);
+        serializer.SerializeValue(ref State);
+        serializer.SerializeValue(ref Velocity);
+        serializer.SerializeValue(ref Acceleration);
+    }
 }
 
 public struct PlayerInput
@@ -470,6 +480,53 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     public CharacterStatus GetStatus() => _status;
     public CharacterStatus GetLastStatus() => _lastStatus;
 
+    public Vector3 GetPosition()
+    {
+        return motor.TransientPosition;
+    }
+
+    public Quaternion GetRotation()
+    {
+        return motor.TransientRotation;
+    }
+
+    public void SetNetworkState(Vector3 position, Quaternion rotation, CharacterStatus status)
+    {
+        //Apply KCC Data:
+        motor.SetPosition(position);
+        motor.SetRotation(rotation);
+
+        //Update Player Status:
+        _status.Grounded = status.Grounded;
+        _status.State = status.State;
+        _status.Velocity = status.Velocity;
+        _status.Acceleration = status.Acceleration;
+
+        //Update Camera + Mesh Position:
+        ApplyCapsuleState(status.State);
+    }
+
+    private void ApplyCapsuleState(State state)
+    {
+        if (state is State.Stand)
+        {
+            motor.SetCapsuleDimensions
+            (
+                radius: motor.Capsule.radius,
+                height: standHeight,
+                yOffset: standHeight * 0.5f
+            );
+        }
+        else
+        {
+            motor.SetCapsuleDimensions
+            (
+                radius: motor.Capsule.radius,
+                height: crouchHeight,
+                yOffset: crouchHeight * 0.5f
+            );
+        }
+    }
 
     public void SetPosition(Vector3 position, bool killVelocity = true)
     {
