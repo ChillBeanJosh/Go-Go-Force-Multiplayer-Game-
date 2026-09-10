@@ -114,6 +114,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCharacter
   debugRayLength: 10
+  playerRenderers: []
   motor: {fileID: 409982377100411383}
   root: {fileID: 57545405644869992}
   cameraTarget: {fileID: 380870966709805963}
@@ -137,6 +138,7 @@ MonoBehaviour:
   crouchHeight: 1.2
   crouchCameraHeight: 0.7
   crouchHeightResponse: 15
+  cameraPositionResponse: 20
 --- !u!1 &1190476880511296376
 GameObject:
   m_ObjectHideFlags: 0

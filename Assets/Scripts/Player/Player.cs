@@ -44,17 +44,37 @@ public class Player : NetworkBehaviour
 
     //Copied Raw Input Date Onto Server:
     private PlayerInputState _serverInput;
+    private int _serverCrouchToggles;
     [Space]
 
 
-    private readonly NetworkVariable<Vector3> _networkPosition =
-        new NetworkVariable<Vector3>();
+    //Position, Rotation, and Status Info To Be Send To The Server:
+    private readonly NetworkVariable<Vector3> _networkPosition = new NetworkVariable<Vector3>();
+    private readonly NetworkVariable<Quaternion> _networkRotation = new NetworkVariable<Quaternion>();
+    private readonly NetworkVariable<CharacterStatus> _networkStatus = new NetworkVariable<CharacterStatus>();
+    [Space]
 
-    private readonly NetworkVariable<Quaternion> _networkRotation =
-        new NetworkVariable<Quaternion>();
 
-    private readonly NetworkVariable<CharacterStatus> _networkStatus =
-        new NetworkVariable<CharacterStatus>();
+    //Previous + Current Server Positions Used For Remote Player Interpolation:
+    private Vector3 _previousNetworkPosition;
+    private Vector3 _currentNetworkPosition;
+    [Space]
+
+
+    //Previous + Current Server Rotation Used For Remote Player Presentation:
+    private Quaternion _previousNetworkRotation;
+    private Quaternion _currentNetworkRotation;
+    [Space]
+
+
+    //Previous + Current Server Status Used For Remote Player Presentation:
+    private CharacterStatus _previousNetworkStatus;
+    private CharacterStatus _currentNetworkStatus;
+    [Space]
+
+
+    private float _networkStateTimer;
+    private bool _hasNetworkState;
 
     public override void OnNetworkSpawn()
     {
@@ -68,6 +88,9 @@ public class Player : NetworkBehaviour
             playerCamera.gameObject.SetActive(false);
             return;
         }
+
+        //Hide The Owner's Player Mesh From Their Own Camera:
+        playerCharacter.SetOwnerVisibility(false);
 
         Cursor.lockState = CursorLockMode.Locked;
         _inputActions = new PlayerInputActions();
@@ -93,7 +116,7 @@ public class Player : NetworkBehaviour
     {
         var deltaTime = Time.deltaTime;
 
-        //Ensure Client Owner Has Input + Camera Access:
+        //Read Input Values From Mapped Input Actions:
         if (IsOwner)
         {
             var input = _inputActions.Gameplay;
@@ -102,7 +125,6 @@ public class Player : NetworkBehaviour
             {
                 Look = input.Look.ReadValue<Vector2>()
             };
-
             playerCamera.UpdateRotation(cameraInput);
 
             _pendingInput.Rotation = playerCamera.transform.rotation;
@@ -116,28 +138,18 @@ public class Player : NetworkBehaviour
                 //Ex: 0 -> NO CROUCH, 1 -> CROUCH, 2 -> NO CROUCH, ...:
                 _pendingCrouchToggles++;
             }
-
-
-#if UNITY_EDITOR
-            if (Keyboard.current.tKey.wasPressedThisFrame)
-            {
-                var ray = new Ray(
-                    playerCamera.transform.position,
-                    playerCamera.transform.forward
-                );
-
-                if (Physics.Raycast(ray, out var hit))
-                {
-                    Teleport(hit.point);
-                }
-            }
-#endif
         }
 
-        //Update Client's Mesh + Camera Positions:
-        if (IsClient)
+        //Update Client's Mesh Render + Camera Positions:
+        if (IsOwner)
         {
-            playerCharacter.UpdateBody(deltaTime);
+            playerCharacter.UpdateCameraTarget(deltaTime);
+            playerCharacter.UpdateMesh(deltaTime);
+        }
+        else
+        {
+            playerCharacter.UpdateMesh(deltaTime);
+            UpdateRemotePresentation(deltaTime);
         }
     }
 
@@ -149,64 +161,65 @@ public class Player : NetworkBehaviour
         var cameraTarget = playerCharacter.GetCameraTarget();
         var status = playerCharacter.GetStatus();
         
-        //Updates Camera Position To Ensure It Follows The Player Character's Camera Target:
-        playerCamera.UpdatePosition(cameraTarget);
+        //Updates Camera Position + Effects:
+        playerCamera.UpdatePosition(playerCharacter.GetVisualCameraPosition());
         cameraSpring.UpdateSpring(deltaTime, cameraTarget.up);
         cameraLean.UpdateLean(deltaTime, status.State is State.Slide ,status.Acceleration, cameraTarget.up);
     }
 
     public void ApplySimulationInput()
     {
-        //Server Side Input Handling:
+        //Get The Input For This Simulation Tick:
+        PlayerInputState input = GetSimulationInput();
+
+        //Server Applies Input Directly:
         if (IsServer)
         {
-            //Applied Host Client Input:
-            if (IsOwner)
-            {
-                PlayerInputState input = GetPendingSimulationInput();
-                ApplyInputToCharacter(input);
+            ApplyInputToCharacter(input);
 
-                //Reset Button Input Values After Input Is Read And Stores:
+            //Reset Remote Client One-Shot Input:
+            if (!IsOwner)
+            {
+                _serverInput.Jump = false;
+                _serverCrouchToggles = 0;
+            }
+            //Reset Host One-Shot Input:
+            else
+            {
                 _pendingInput.Jump = false;
                 _pendingCrouchToggles = 0;
             }
-            //Applied Remote Client Input:
-            else
-            {
-                Debug.Log
-                (
-                    $"[SERVER SIM] Client {OwnerClientId} " +
-                    $"Move={_serverInput.Move} " +
-                    $"Jump={_serverInput.Jump} " +
-                    $"JumpSustain={_serverInput.JumpSustain} " +
-                    $"Crouch={_serverInput.CrouchToggles}"
-                );
-                ApplyInputToCharacter(_serverInput);
-            }
+
             return;
         }
 
-        //Remote Client Input Logic Sent to ServerRPC So That Server Can Apply Its Logic:
+        //Remote Client Sends Its Input To The Server:
         if (IsOwner)
         {
-            PlayerInputState input = GetPendingSimulationInput();
             SubmitInputServerRpc(input);
 
-            //Reset Button Input Values After Input Is Read And Stores:
+            //Reset Local One-Shot Input:
             _pendingInput.Jump = false;
             _pendingCrouchToggles = 0;
         }
     }
 
-    private PlayerInputState GetPendingSimulationInput()
+    private PlayerInputState GetSimulationInput()
     {
-        //Create A Snapshot Of The Input For This Simulation Tick:
-        PlayerInputState input = _pendingInput;
+        //Server Gets The Latest Input Received From A Remote Client:
+        if (IsServer && !IsOwner)
+        {
+            PlayerInputState input = _serverInput;
+            input.CrouchToggles = _serverCrouchToggles;
 
-        //Add All Crouch Toggle Presses Collected Since The Last Tick:
-        input.CrouchToggles = _pendingCrouchToggles;
+            return input;
+        }
 
-        return input;
+        //Owner Gets Its Locally Collected Input:
+        PlayerInputState localInput = _pendingInput;
+        localInput.CrouchToggles = _pendingCrouchToggles;
+
+        return localInput;
     }
 
     private void ApplyInputToCharacter(PlayerInputState inputState)
@@ -243,7 +256,14 @@ public class Player : NetworkBehaviour
     private void SubmitInputServerRpc(PlayerInputState input)
     {
         //Store Client's PlayerInputState Values (pending) -> Server's PlayerInputState Values (server):
-        _serverInput = input;
+        _serverInput.Rotation = input.Rotation;
+        _serverInput.Move = input.Move;
+        _serverInput.Jump = _serverInput.Jump || input.Jump;
+        _serverInput.JumpSustain = input.JumpSustain;
+
+        //Accumulate Crouch Toggle Presses Until The Server Applies Them:
+        _serverCrouchToggles += input.CrouchToggles;
+
 
         Debug.Log
         (
@@ -270,18 +290,75 @@ public class Player : NetworkBehaviour
     {
         if (IsServer) return;
 
-        //Apply The Latest Server Character State On This Client:
+        Vector3 newPosition = _networkPosition.Value;
+        Quaternion newRotation = _networkRotation.Value;
+        CharacterStatus newStatus = _networkStatus.Value;
+
         playerCharacter.SetNetworkState
         (
-            _networkPosition.Value,
-            _networkRotation.Value,
-            _networkStatus.Value
+            newPosition,
+            newRotation,
+            newStatus
         );
-    }
-    public void Teleport(Vector3 position)
-    {
-        if (!IsOwner) return;
 
-        playerCharacter.SetPosition(position);
+        if (!_hasNetworkState)
+        {
+            _previousNetworkPosition = newPosition;
+            _currentNetworkPosition = newPosition;
+
+            _previousNetworkRotation = newRotation;
+            _currentNetworkRotation = newRotation;
+
+            _previousNetworkStatus = newStatus;
+            _currentNetworkStatus = newStatus;
+
+            _networkStateTimer = Time.fixedDeltaTime;
+            _hasNetworkState = true;
+
+            return;
+        }
+
+        _previousNetworkPosition = _currentNetworkPosition;
+        _previousNetworkRotation = _currentNetworkRotation;
+        _previousNetworkStatus = _currentNetworkStatus;
+
+        _currentNetworkPosition = newPosition;
+        _currentNetworkRotation = newRotation;
+        _currentNetworkStatus = newStatus;
+
+        _networkStateTimer = 0f;
+    }
+
+    private void UpdateRemotePresentation(float deltaTime)
+    {
+        if (!_hasNetworkState) return;
+
+        _networkStateTimer += deltaTime;
+
+        float interpolationTime = Mathf.Clamp01
+        (
+            _networkStateTimer / Time.fixedDeltaTime
+        );
+
+        Vector3 position = Vector3.Lerp
+        (
+            _previousNetworkPosition,
+            _currentNetworkPosition,
+            interpolationTime
+        );
+
+        Quaternion rotation = Quaternion.Slerp
+        (
+            _previousNetworkRotation,
+            _currentNetworkRotation,
+            interpolationTime
+        );
+
+        playerCharacter.SetPresentationState
+        (
+            position,
+            rotation,
+            _currentNetworkStatus
+        );
     }
 }

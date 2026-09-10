@@ -88,6 +88,8 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     [SerializeField][Range(0f, 1f)] private float crouchCameraHeight;
     [Space] 
     [SerializeField] private float crouchHeightResponse;
+    [Space]
+    [SerializeField] private float cameraPositionResponse = 20f;
 
     private CharacterStatus _status;
     public CharacterStatus Status => _status;
@@ -108,11 +110,18 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     private float _timeSinceJumpRequested;
     private bool _ungroundedDueToJump;
 
+
+    private Vector3 _visualCameraPosition;
+    private bool _visualCameraInitialized;
+    private Renderer[] _playerRenderers;
+
+
     public void Initialize()
     {
         _status.State = State.Stand;
         _lastStatus = _status;
         _uncrouchOverlapResults = new Collider[8];
+        _playerRenderers = root.GetComponentsInChildren<Renderer>();
         motor.CharacterController = this;
     }
 
@@ -147,27 +156,9 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
 
     public void UpdateBody(float deltaTime)
     {
-        //Lerp Camera Target Scalar:
-        var currentHeight = motor.Capsule.height;
-        var cameraTargetHeight = currentHeight * (_status.State is State.Stand ? standCameraHeight : crouchCameraHeight);
-        cameraTarget.localPosition = Vector3.Lerp
-        (
-            a: cameraTarget.localPosition,
-            b: new Vector3(0f, cameraTargetHeight, 0f),
-            t: 1f - Mathf.Exp(-crouchHeightResponse * deltaTime)
-        );
-            
-        //Lerp Root Mesh Scalar:
-        var normalizedHeight = currentHeight / standHeight;
-        var rootTargetScale = new Vector3(1f, normalizedHeight, 1f);
-        root.localScale = Vector3.Lerp
-        (
-            a: root.localScale,
-            b: rootTargetScale,
-            t: 1f - Mathf.Exp(-crouchHeightResponse * deltaTime)
-        );
+        UpdateCameraTarget(deltaTime);
+        UpdateMesh(deltaTime);
     }
-
 
     public void UpdateVelocity(ref Vector3 currentVelocity, float deltaTime)
     {
@@ -377,6 +368,12 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
         Debug.DrawRay(cameraTarget.position, currentVelocity, Color.green);
     }
 
+
+    public Vector3 GetVisualCameraPosition()
+    {
+        return _visualCameraPosition;
+    }
+
     public void UpdateRotation(ref Quaternion currentRotation, float deltaTime)
     {
         var forward = Vector3.ProjectOnPlane
@@ -480,15 +477,9 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     public CharacterStatus GetStatus() => _status;
     public CharacterStatus GetLastStatus() => _lastStatus;
 
-    public Vector3 GetPosition()
-    {
-        return motor.TransientPosition;
-    }
+    public Vector3 GetPosition() => motor.TransientPosition;
+    public Quaternion GetRotation() => motor.TransientRotation;
 
-    public Quaternion GetRotation()
-    {
-        return motor.TransientRotation;
-    }
 
     public void SetNetworkState(Vector3 position, Quaternion rotation, CharacterStatus status)
     {
@@ -528,9 +519,73 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
         }
     }
 
-    public void SetPosition(Vector3 position, bool killVelocity = true)
+    public void SetPresentationState(Vector3 position, Quaternion rotation, CharacterStatus status)
     {
-        motor.SetPosition(position);
-        if (killVelocity ) motor.BaseVelocity = Vector3.zero;
+        Vector3 motorPosition = motor.TransientPosition;
+        Quaternion motorRotation = motor.TransientRotation;
+
+        //Visual offset from the authoritative KCC body:
+        Vector3 positionOffset = Quaternion.Inverse(motorRotation) * (position - motorPosition);
+
+        root.localPosition = positionOffset;
+
+        Quaternion rotationOffset = Quaternion.Inverse(motorRotation) * rotation;
+
+        root.localRotation = rotationOffset;
+
+        _status = status;
+    }
+
+    public void UpdateCameraTarget(float deltaTime)
+    {
+        var currentHeight = motor.Capsule.height;
+
+        var targetHeight = currentHeight * (_status.State is State.Stand ? standCameraHeight: crouchCameraHeight);
+
+        var targetLocalPosition = new Vector3(0f, targetHeight, 0f);
+
+        cameraTarget.localPosition = Vector3.Lerp
+        (
+            cameraTarget.localPosition,
+            targetLocalPosition,
+            1f - Mathf.Exp(-crouchHeightResponse * deltaTime)
+        );
+
+        //Initialize Visual Camera Position:
+        if (!_visualCameraInitialized)
+        {
+            _visualCameraPosition = cameraTarget.position;
+            _visualCameraInitialized = true;
+        }
+
+        //Smooth Camera Position Toward The Authoritative Camera Target:
+        _visualCameraPosition = Vector3.Lerp(
+            _visualCameraPosition,
+            cameraTarget.position,
+            1f - Mathf.Exp(-cameraPositionResponse * deltaTime)
+        );
+    }
+
+    public void UpdateMesh(float deltaTime)
+    {
+        var currentHeight = motor.Capsule.height;
+        var normalizedHeight = currentHeight / standHeight;
+
+        var targetScale = new Vector3(1f, normalizedHeight, 1f);
+
+        root.localScale = Vector3.Lerp
+        (
+            root.localScale,
+            targetScale,
+            1f - Mathf.Exp(-crouchHeightResponse * deltaTime)
+        );
+    }
+
+    public void SetOwnerVisibility(bool visible)
+    {
+        for (int i = 0; i < _playerRenderers.Length; i++)
+        {
+            _playerRenderers[i].enabled = visible;
+        }
     }
 }

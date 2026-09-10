@@ -31,9 +31,9 @@ public class PlayerCamera : MonoBehaviour
         transform.eulerAngles = _eulerAngles;
     }
 
-    public void UpdatePosition(Transform target)
+    public void UpdatePosition(Vector3 position)
     {
-        //Update Camera Position To Follow Target:
-        transform.position = target.position;
+        transform.position = position;
     }
+
 }
