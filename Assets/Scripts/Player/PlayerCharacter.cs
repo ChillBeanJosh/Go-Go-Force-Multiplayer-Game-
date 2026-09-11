@@ -42,6 +42,27 @@ public struct PlayerInput
     public CrouchInput Crouch;
 }
 
+public struct PlayerCharacterState
+{
+    public KinematicCharacterMotorState MotorState;
+
+    public CharacterStatus Status;
+    public CharacterStatus LastStatus;
+
+    public Quaternion RequestedRotation;
+    public Vector3 RequestedMovement;
+
+    public bool RequestedJump;
+    public bool RequestedSustainedJump;
+    public bool RequestedCrouch;
+    public bool RequestedCrouchInAir;
+
+    public float TimeSinceUngrounded;
+    public float TimeSinceJumpRequested;
+
+    public bool UngroundedDueToJump;
+}
+
 public class PlayerCharacter : MonoBehaviour, ICharacterController
 {
     [Header("Debug Tools: ")]
@@ -159,6 +180,9 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
         UpdateCameraTarget(deltaTime);
         UpdateMesh(deltaTime);
     }
+
+    //-----------------------------------------------------------------------------------------------------------
+    // [KCC CHARACTER METHODS]
 
     public void UpdateVelocity(ref Vector3 currentVelocity, float deltaTime)
     {
@@ -473,13 +497,7 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
         
     }
 
-    public Transform GetCameraTarget() => cameraTarget;
-    public CharacterStatus GetStatus() => _status;
-    public CharacterStatus GetLastStatus() => _lastStatus;
-
-    public Vector3 GetPosition() => motor.TransientPosition;
-    public Quaternion GetRotation() => motor.TransientRotation;
-
+    //-----------------------------------------------------------------------------------------------------------
 
     public void SetNetworkState(Vector3 position, Quaternion rotation, CharacterStatus status)
     {
@@ -588,4 +606,60 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
             _playerRenderers[i].enabled = visible;
         }
     }
+
+    public PlayerCharacterState GetPredictionState()
+    {
+        return new PlayerCharacterState
+        {
+            MotorState = motor.GetState(),
+
+            Status = _status,
+            LastStatus = _lastStatus,
+
+            RequestedRotation = _requestedRotation,
+            RequestedMovement = _requestedMovement,
+
+            RequestedJump = _requestedJump,
+            RequestedSustainedJump = _requestedSustainedJump,
+            RequestedCrouch = _requestedCrouch,
+            RequestedCrouchInAir = _requestedCrouchInAir,
+
+            TimeSinceUngrounded = _timeSinceUngrounded,
+            TimeSinceJumpRequested = _timeSinceJumpRequested,
+
+            UngroundedDueToJump = _ungroundedDueToJump
+        };
+    }
+
+    public void ApplyPredictionState(PlayerCharacterState state)
+    {
+        motor.ApplyState(state.MotorState);
+
+        _status = state.Status;
+        _lastStatus = state.LastStatus;
+
+        _requestedRotation = state.RequestedRotation;
+        _requestedMovement = state.RequestedMovement;
+
+        _requestedJump = state.RequestedJump;
+        _requestedSustainedJump = state.RequestedSustainedJump;
+        _requestedCrouch = state.RequestedCrouch;
+        _requestedCrouchInAir = state.RequestedCrouchInAir;
+
+        _timeSinceUngrounded = state.TimeSinceUngrounded;
+        _timeSinceJumpRequested = state.TimeSinceJumpRequested;
+
+        _ungroundedDueToJump = state.UngroundedDueToJump;
+
+        ApplyCapsuleState(_status.State);
+    }
+
+    //-----------------------------------------------------------------------------------------------------------
+    // [PUBLIC ACCESS]
+    public Transform GetCameraTarget() => cameraTarget;
+    public CharacterStatus GetStatus() => _status;
+    public CharacterStatus GetLastStatus() => _lastStatus;
+    public Vector3 GetPosition() => motor.TransientPosition;
+    public Quaternion GetRotation() => motor.TransientRotation;
+    public KinematicCharacterMotor GetMotor() => motor;
 }
