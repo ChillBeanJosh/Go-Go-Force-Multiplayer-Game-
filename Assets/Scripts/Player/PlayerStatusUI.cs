@@ -27,6 +27,9 @@ public class PlayerStatusUI : MonoBehaviour
         Vector3 velocity = playerCharacter.Status.Velocity;
         float speed = velocity.magnitude;
 
+        bool ElectricField = playerCharacter.GetActiveCharge();
+        bool IsPositive = playerCharacter.IsPositiveCharge();
+
         // Prediction Information
         bool predictionPaused = player.IsPredictionPaused;
         string predictionState = predictionPaused ? "Paused" : "Active";
@@ -37,6 +40,9 @@ public class PlayerStatusUI : MonoBehaviour
             $"Stance: {state}\n" +
             $"Velocity: {velocity:F2}\n" +
             $"Speed: {speed:F2}\n" +
+            $"\n" +
+            $"Field Active: {ElectricField}\n" +
+            $"Positive Field: {IsPositive}\n" +
             $"\n" +
             $"Prediction: {predictionState}";
     }

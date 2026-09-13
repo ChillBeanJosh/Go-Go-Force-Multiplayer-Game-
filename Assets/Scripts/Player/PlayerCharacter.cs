@@ -111,6 +111,14 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     [SerializeField] private float crouchHeightResponse;
     [Space]
     [SerializeField] private float cameraPositionResponse = 20f;
+    [Space]
+
+    [Header("Magnetism Parameters: ")]
+    [SerializeField] private bool chargeToggle = false;
+    [SerializeField] private bool positiveCharge = false;
+    [Space]
+    [SerializeField] private float chargeEffectStrength;
+    [SerializeField] private float chargeEffectRadius;
 
     private CharacterStatus _status;
     public CharacterStatus Status => _status;
@@ -135,7 +143,6 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     private Vector3 _visualCameraPosition;
     private bool _visualCameraInitialized;
     private Renderer[] _playerRenderers;
-
 
     public void Initialize()
     {
@@ -186,6 +193,11 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
 
     public void UpdateVelocity(ref Vector3 currentVelocity, float deltaTime)
     {
+        if (chargeToggle)
+        {
+            ApplyChargeEffect(ref currentVelocity, deltaTime);
+        }
+
         _status.Acceleration = Vector3.zero;
 
         //Grounded State:
@@ -496,8 +508,40 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     {
         
     }
+    //-----------------------------------------------------------------------------------------------------------
+    // [MECHANICS]
+
+    public void ActivateChargeToggle()
+    {
+        chargeToggle = !chargeToggle;
+    }
+    public void ChargeToggle()
+    {
+        positiveCharge = !positiveCharge;
+    }
+    public void ApplyChargeEffect(ref Vector3 currentVelocity, float deltaTime)
+    {
+        Collider[] hitColliders = Physics.OverlapSphere(transform.position, chargeEffectRadius);
+        foreach (var hitCollider in hitColliders)
+        {
+            if (hitCollider.CompareTag("Positive") || hitCollider.CompareTag("Negative"))
+            {
+                bool isPositive = hitCollider.CompareTag("Positive");
+
+                bool shouldAttract = (positiveCharge && isPositive) || (!positiveCharge && !isPositive);
+
+                Vector3 direction = (hitCollider.transform.position - transform.position).normalized;
+
+                float force = shouldAttract ? -chargeEffectStrength * 2 : chargeEffectStrength; //manually multiply and adjust if custom is needed
+                currentVelocity += direction * force * deltaTime;
+            }
+        }
+    }
+
+
 
     //-----------------------------------------------------------------------------------------------------------
+    // [NETWORK UPDATES]
 
     public void SetNetworkState(Vector3 position, Quaternion rotation, CharacterStatus status)
     {
@@ -674,4 +718,7 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
     public Vector3 GetPosition() => motor.TransientPosition;
     public Quaternion GetRotation() => motor.TransientRotation;
     public KinematicCharacterMotor GetMotor() => motor;
+
+    public bool GetActiveCharge() => chargeToggle;
+    public bool IsPositiveCharge() => positiveCharge;
 }

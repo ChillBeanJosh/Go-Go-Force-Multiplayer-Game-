@@ -12,6 +12,8 @@ public struct PlayerInputState : INetworkSerializable
     public bool Jump;
     public bool JumpSustain;
     public int CrouchToggles;
+    public bool ChargeModeToggle;
+    public bool ChargeModeSwap;
 
     public void NetworkSerialize<T>(BufferSerializer<T> serializer)
         where T : IReaderWriter
@@ -22,6 +24,8 @@ public struct PlayerInputState : INetworkSerializable
         serializer.SerializeValue(ref Jump);
         serializer.SerializeValue(ref JumpSustain);
         serializer.SerializeValue(ref CrouchToggles);
+        serializer.SerializeValue(ref ChargeModeToggle);
+        serializer.SerializeValue(ref ChargeModeSwap);
     }
 }
 
@@ -275,6 +279,7 @@ public class Player : NetworkBehaviour
             {
                 Look = input.Look.ReadValue<Vector2>()
             };
+
             playerCamera.UpdateRotation(cameraInput);
 
             _pendingInput.Rotation = playerCamera.transform.rotation;
@@ -282,10 +287,11 @@ public class Player : NetworkBehaviour
             _pendingInput.JumpSustain = input.Jump.IsPressed();
             _pendingInput.Jump |= input.Jump.WasPressedThisFrame();
 
+            _pendingInput.ChargeModeToggle |= input.ModeToggle.WasPressedThisFrame();
+            _pendingInput.ChargeModeSwap |= input.SwapMode.WasPressedThisFrame();
+
             if (input.Crouch.WasPressedThisFrame())
             {
-                //Count crouch Input Presses For Spam Control:
-                //Ex: 0 -> NO CROUCH, 1 -> CROUCH, 2 -> NO CROUCH, ...:
                 _pendingCrouchToggles++;
             }
         }
@@ -524,6 +530,9 @@ public class Player : NetworkBehaviour
             {
                 _pendingInput.Jump = false;
                 _pendingCrouchToggles = 0;
+
+                _pendingInput.ChargeModeToggle = false;
+                _pendingInput.ChargeModeSwap = false;
             }
 
             return;
@@ -572,6 +581,9 @@ public class Player : NetworkBehaviour
             //Reset Local One-Shot Input:
             _pendingInput.Jump = false;
             _pendingCrouchToggles = 0;
+
+            _pendingInput.ChargeModeToggle = false;
+            _pendingInput.ChargeModeSwap = false;
         }
     }
 
@@ -643,6 +655,16 @@ public class Player : NetworkBehaviour
                     Crouch = CrouchInput.Toggle
                 }
             );
+        }
+
+        if (inputState.ChargeModeToggle)
+        {
+            playerCharacter.ActivateChargeToggle();
+        }
+
+        if (inputState.ChargeModeSwap)
+        {
+            playerCharacter.ChargeToggle();
         }
     }
 
