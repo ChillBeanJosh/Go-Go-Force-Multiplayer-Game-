@@ -515,6 +515,18 @@ public class PlayerCharacter : MonoBehaviour, ICharacterController
         ApplyCapsuleState(status.State);
     }
 
+    public void ApplyReconciliationState(CharacterNetworkState state, PlayerCharacterState predictedState)
+    {
+        KinematicCharacterMotorState motorState = predictedState.MotorState;
+        motorState.Position = state.Position;
+        motorState.Rotation = state.Rotation;
+        motorState.BaseVelocity = state.Status.Velocity - motorState.AttachedRigidbodyVelocity;
+
+        predictedState.MotorState = motorState;
+        predictedState.Status = state.Status;
+        ApplyPredictionState(predictedState);
+    }
+
     private void ApplyCapsuleState(State state)
     {
         if (state is State.Stand)

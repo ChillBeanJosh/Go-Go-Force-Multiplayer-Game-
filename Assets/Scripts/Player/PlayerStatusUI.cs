@@ -5,20 +5,40 @@ using UnityEngine;
 public class PlayerStatusUI : MonoBehaviour
 {
     [SerializeField] private PlayerCharacter playerCharacter;
+    [SerializeField] private Player player;
     [SerializeField] private TMP_Text infoText;
 
-    void Update()
+    private void Update()
     {
-        //Null Check:
-        if (playerCharacter == null || infoText == null) return;
+        UpdatePlayerInfo();
+    }
 
+    private void UpdatePlayerInfo()
+    {
+        // Null Check
+        if (playerCharacter == null || player == null || infoText == null)
+        {
+            return;
+        }
 
-        var grounded = playerCharacter.Status.Grounded;
+        // Movement Information
+        bool grounded = playerCharacter.Status.Grounded;
         var state = playerCharacter.Status.State;
-        var velocity = playerCharacter.Status.Velocity;
-        var speed = velocity.magnitude;
+        Vector3 velocity = playerCharacter.Status.Velocity;
+        float speed = velocity.magnitude;
 
-        infoText.text = $"Grounded: {grounded}\n" + $"Stance: {state}\n" + $"Velocity: {velocity:F2}\n" + $"Speed: {speed:F2}\n";
+        // Prediction Information
+        bool predictionPaused = player.IsPredictionPaused;
+        string predictionState = predictionPaused ? "Paused" : "Active";
+
+        // Display
+        infoText.text =
+            $"Grounded: {grounded}\n" +
+            $"Stance: {state}\n" +
+            $"Velocity: {velocity:F2}\n" +
+            $"Speed: {speed:F2}\n" +
+            $"\n" +
+            $"Prediction: {predictionState}";
     }
 }
 

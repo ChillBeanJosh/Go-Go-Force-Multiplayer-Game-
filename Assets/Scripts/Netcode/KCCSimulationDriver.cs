@@ -105,7 +105,8 @@ public class KCCSimulationDriver : MonoBehaviour
             //Find The Locally Owned Player For Client Prediction:
             for (int i = 0; i < _players.Count; i++)
             {
-                if (_players[i].IsOwner)
+                if (_players[i].IsOwner &&
+                    !_players[i].IsPredictionPaused)
                 {
                     _predictedMotors.Add(_players[i].GetMotor());
                     break;
